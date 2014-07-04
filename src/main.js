@@ -1,10 +1,12 @@
+// Helpers
+// =======
 var $$ = document.querySelector.bind(document);
 var $ = function(selector) {
 	return Array.prototype.slice.call(document.querySelectorAll(selector));
 };
 
-// Editor behaviors
-// ================
+// GUI behaviors
+// =============
 // textarea, behave.js
 var editor = new Behave({
     textarea:  $$('.editor-textarea'),
@@ -23,3 +25,16 @@ $('.btn-toggle-editor').forEach(function($btn) {
 		document.body.classList.toggle('mode-editoropen');
 	});
 });
+// execute button
+$('.btn-execute').forEach(function($btn) {
+	$btn.addEventListener('click', function() {
+		executeProgram($$('.editor-textarea').value);
+	});
+});
+
+// Execution
+// =========
+// run full execution process
+function executeProgram(programText) {
+	$$('#playground').innerHTML = '<pre>'+programText+'</pre>';
+}
