@@ -6,9 +6,40 @@
     <meta name="description" content="">
 
     <title>searchlang-env</title>
+
+    <link rel="stylesheet" href="index.css">
   </head>
 
-  <body>
+  <body class="mode-editoropen">
+
+    <div id="editor">
+      <div class="editor-closed-view">
+        <p class="editor-controls">
+          <button class="btn-toggle-editor">Open</button>
+        </p>
+      </div>
+      <div class="editor-open-view">
+        <p class="editor-controls">
+          <button class="btn-toggle-editor">Close</button>
+          <button class="btn-execute">Execute</button>
+        </p>
+        <textarea class="editor-textarea"></textarea>
+      </div>
+    </div>
+    <div id="playground">todo</div>
+    <div id="devnotes">
+      <p>Todo</p>
+      <ul>
+        <li>Execute btn
+        <li>Global context manager
+        <li>Search resolution
+        <li>Exptree exec
+        <li>Document builtin
+        <li>Load builtin
+      </ul>
+    </div>
+
+    <script src="/assets/js/behave.js"></script>
     <script src="/build/main.js"></script>
   </body>
 </html>

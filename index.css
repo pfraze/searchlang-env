@@ -1,0 +1,53 @@
+/* editor */
+#editor {
+	position: absolute;
+	top: 5px; left: 5px;
+	z-index: 1;
+	height: 98%;
+
+	/* stateful */
+	width: 50px;
+}
+.editor-open-view {
+	display: none;
+	height: 100%;
+}
+.editor-controls {
+	text-align: right;
+}
+.editor-textarea {
+	width: 100%;
+	height: 90%;
+}
+
+/* playground */
+#playground {
+	padding: 1em;
+
+	/* stateful */
+	margin-left: 50px;
+}
+
+/* devnotes */
+#devnotes {
+	position: absolute;
+	top: 5px; right: 5px;
+	z-index: 1;
+	width: 10%;
+	height: 90%;
+	background: #eee;
+}
+
+/* editor open mode */
+.mode-editoropen #editor {
+	width: 33%;
+}
+.mode-editoropen .editor-closed-view {
+	display: none;
+}
+.mode-editoropen .editor-open-view {
+	display: block;
+}
+.mode-editoropen #playground {
+	margin-left: 33%;
+}
