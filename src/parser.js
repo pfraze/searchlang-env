@@ -10,8 +10,9 @@ url-expr       := /[^\s]+.[^\s]+/
 search-expr    := search-subexpr | ( ( label-expr | url-expr | search-subexpr ) ( '>' search-subexpr )+ )
 search-subexpr := term* ( attribute: values )*
 attribute      := term
-values         := term | '"' /[^"]+/ '"' | '(' search-expr+ ')'
-term           := /[A-z0-9_-:\.\/]+/
+values         := term | string | '(' search-expr+ ')'
+term           := /[A-z0-9_-]+/
+string         := '"' /[^"]+/ '"'
 comment        := sl-comment | ml-comment
 sl-comment     := '--' /[^\n]* / '\n'
 ml-comment     := '---' /^(---)/ '---'
@@ -40,8 +41,8 @@ Parser.parse = function(buffer) {
 	Parser.buffer = buffer;
 	Parser.trash = '';
 	Parser.buffer_position = 0;
-	this.buffer_size = buffer.length;
-	this.log = ((this.logging) ? (function() { console.log.apply(console,arguments); }) : (function() {}));
+	Parser.buffer_size = buffer.length;
+	Parser.log = ((Parser.logging) ? (function() { console.log.apply(console,arguments); }) : (function() {}));
 
 	var expr_tree = { children: [] };
 	try { Parser.readExpressionTree(expr_tree, 0); }
@@ -53,14 +54,14 @@ Parser.parse = function(buffer) {
 };
 
 Parser.moveBuffer = function(dist) {
-	this.trash += this.buffer.substring(0, dist);
-	this.buffer = this.buffer.substring(dist);
-	this.buffer_position += dist;
-	this.log('+', dist);
+	Parser.trash += Parser.buffer.substring(0, dist);
+	Parser.buffer = Parser.buffer.substring(dist);
+	Parser.buffer_position += dist;
+	Parser.log('+', dist);
 };
 
 Parser.isFinished = function() {
-	if (this.buffer_position >= this.buffer_size || !/\S/.test(this.buffer))
+	if (Parser.buffer_position >= Parser.buffer_size || !/\S/.test(Parser.buffer))
 		return true;
 	return false;
 };
@@ -118,17 +119,73 @@ Parser.readExpression = function() {
 	var match = exprRegex.exec(Parser.buffer);
 	if (!match) return false;
 	var expr = match[1];
-	Parser.moveBuffer(match[0].length);
 
 	// Categorize
+	var expr_obj;
 	if (labelRegex.test(expr)) {
-		return { label: expr };
-	}
-	if (urlRegex.test(expr)) {
-		return { url: expr };
+		expr_obj = { label: expr };
+		Parser.moveBuffer(match[0].length);
+	} else if (urlRegex.test(expr)) {
+		expr_obj = { url: expr };
+		Parser.moveBuffer(match[0].length);
+	} else {
+		expr_obj = { terms: Parser.readSearchSubexpr() };
+		// dont need to move buffer, ^ will do so
 	}
 
-	return { exprTodo: expr };
+	// :TODO: subnavigations
+
+	return expr_obj;
+};
+
+Parser.readSearchSubexpr = function() {
+	// search-subexpr := term* ( attribute: values )*
+	// attribute      := term
+	// values         := term | string | '(' search-expr+ ')'
+	// ===============================================================
+	var terms = [];
+	while (true) {
+		var term = Parser.readTerm() || Parser.readString();
+		if (!term) {
+			// Skip newline
+			Parser.moveBuffer(1);
+			break;
+		}
+
+		// An attribute/value?
+		if (term.charAt(term.length - 1) == ':') {
+			var value = Parser.readTerm() || Parser.readString();
+			if (!value)
+				value = '';
+			// :TODO: subsearches
+			terms.push([term, value]);
+		}
+		// A term
+		else {
+			terms.push(term);
+		}
+	}
+	return terms;
+};
+
+var termRegex = /^[ ]*([A-z0-9_-]+:?)/;
+Parser.readTerm = function() {
+	// term := /[A-z0-9_-]+/
+	// =====================
+	var match = termRegex.exec(Parser.buffer);
+	if (!match) return false;
+	Parser.moveBuffer(match[0].length);
+	return match[1];
+};
+
+var stringRegex = /^[ ]*\"([^\"]*)\"/;
+Parser.readString = function() {
+	// string := '"' /[^"]+/ '"'
+	// =========================
+	var match = stringRegex.exec(Parser.buffer);
+	if (!match) { return false; }
+	Parser.moveBuffer(match[0].length);
+	return replaceEscapeCodes(match[1]);
 };
 
 Parser.readAgent = function() {
@@ -266,54 +323,6 @@ Parser.readBody = function() {
 
 	this.log('Read body:', body);
 	return body;
-};
-
-Parser.readString = function() {
-	var match;
-
-	// match opening quote
-	match = /^\s*[\"\']/.exec(this.buffer);
-	if (!match) { return false; }
-	this.moveBuffer(match[0].length);
-	var quote_char = match[0];
-
-	// read the string till the next un-escaped quote
-	var string = '', last_char;
-	while (this.buffer.charAt(0) != quote_char || (this.buffer.charAt(0) == quote_char && last_char == '\\')) {
-		var c = this.buffer.charAt(0);
-		this.moveBuffer(1);
-		if (!c) { throw this.errorMsg("String must be terminated by a second quote"); }
-		string += c;
-		last_char = c;
-	}
-	this.moveBuffer(1);
-
-	// backlash escape codes
-	string = replaceEscapeCodes(string);
-
-	this.log('Read string:', string);
-	return string;
-};
-
-Parser.readNSToken = function() {
-	// read pretty much anything
-	var match = /^\s*(\S*)/.exec(this.buffer);
-	if (match && match[1].charAt(0) != '[') { // dont match a pipe
-		this.moveBuffer(match[0].length);
-		this.log('Read uri:', match[1]);
-		return match[1];
-	}
-
-	return false;
-};
-
-Parser.readToken = function() {
-	// read the token
-	var match = /^\s*(\w[-\w]*)/.exec(this.buffer);
-	if (!match) { return false; }
-	this.moveBuffer(match[0].length);
-	this.log('Read token:', match[1]);
-	return match[1];
 };
 
 Parser.errorMsg = function(msg) {
