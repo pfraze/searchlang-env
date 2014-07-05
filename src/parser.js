@@ -5,7 +5,7 @@ Grammar
 line           := expr | comment
 expr           := indentation ( label-expr | url-expr | search-exp ) '\n'
 indentation    := /\s* /
-label-expr     := /[A-Z]+/
+label-expr     := /[A-Z_][A-Z_0-9]* /
 url-expr       := /[^\s]+.[^\s]+/
 search-expr    := search-subexpr | ( ( label-expr | url-expr | search-subexpr ) ( '>' search-subexpr )+ )
 search-subexpr := term* ( attribute: values )*
@@ -108,19 +108,27 @@ Parser.measureIndent = function() {
 };
 
 var exprRegex = /^[ ]*(.*)(\n|$)/;
+var labelRegex = /^[A-Z_][A-Z_0-9]*/;
+var urlRegex = /^[^\s]+\.[^\s]+/;
 Parser.readExpression = function() {
 	// expr := indentation ( label-expr | url-expr | search-exp ) '\n'
 	// ===============================================================
 
-	// read to newline
+	// Read to newline
 	var match = exprRegex.exec(Parser.buffer);
 	if (!match) return false;
 	var expr = match[1];
 	Parser.moveBuffer(match[0].length);
 
-	// :TODO: further processing
+	// Categorize
+	if (labelRegex.test(expr)) {
+		return { label: expr };
+	}
+	if (urlRegex.test(expr)) {
+		return { url: expr };
+	}
 
-	return { debug: expr };
+	return { exprTodo: expr };
 };
 
 Parser.readAgent = function() {
