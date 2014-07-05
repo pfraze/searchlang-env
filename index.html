@@ -23,22 +23,47 @@
           <button class="btn-toggle-editor">Close</button>
           <button class="btn-execute">Execute</button>
         </p>
-        <textarea class="editor-textarea"></textarea>
+        <textarea class="editor-textarea">socialnetwork.com/u/bob
+load
+  /data-utils.js
+
+document
+  heading: "About me"
+  paragraph
+    user profile
+  heading: "I enjoy..."
+  list
+    join
+      user likes
+      user activities</textarea>
       </div>
     </div>
     <div id="playground"></div>
     <div id="devnotes">
       <p>Todo</p>
       <ul>
-        <li>Global context manager
-        <li>Search resolution
-        <li>Exptree exec
-        <li>Document builtin
-        <li>Load builtin
+        <li>Setup local
+        <li>Global context
+        <li>Parse<ul>
+          <li>Comments
+          <li>Search-expr terms
+          <li>Search-expr attr/values
+          <li>Search-expr subsearch
+          <li>Search-expr navigations
+          <li>Url-expr
+          <li>Label-expr substitution
+          <li>Label-expr navigation
+        </ul>
+        <li>Expr-tree exec
+        <li>Builtins<ul>
+          <li>Document builtin
+          <li>Load builtin
+        </ul>
       </ul>
     </div>
 
     <script src="/assets/js/behave.js"></script>
+    <script src="/assets/js/local.js"></script>
     <script src="/build/main.js"></script>
   </body>
 </html>

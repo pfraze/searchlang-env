@@ -1,3 +1,5 @@
+var Parser = require('./parser');
+
 // Helpers
 // =======
 var $$ = document.querySelector.bind(document);
@@ -36,5 +38,6 @@ $('.btn-execute').forEach(function($btn) {
 // =========
 // run full execution process
 function executeProgram(programText) {
-	$$('#playground').innerHTML = '<pre>'+programText+'</pre>';
+	var output = Parser.parse(programText);
+	$$('#playground').innerHTML = '<pre>'+JSON.stringify(output, false, 2)+'</pre>';
 }
