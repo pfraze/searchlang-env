@@ -158,7 +158,7 @@ Parser.readSearchSubexpr = function() {
 			if (!value)
 				value = '';
 			// :TODO: subsearches
-			terms.push([term, value]);
+			terms.push([term.slice(0, -1), value]);
 		}
 		// A term
 		else {

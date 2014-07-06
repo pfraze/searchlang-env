@@ -30,23 +30,17 @@ function execNext() {
 	var expr = getCurrent();
 	if (!expr) {
 		// done
-		return true;
+		return web.promise(true);
 	}
 
-	// Find out about the root expression of this expr-tree
-	var link = resolveExpr(expr);
-	if (!link) {
-		// Must be a label expression-tree, skip
-		// (a failed resolution would be a broken promise)
+	// Skip label expression-trees (they dont execute)
+	if (expr.label) {
 		advance();
 		return execNext();
 	}
 
-	// Wait...
-	return web.promise(link).then(function(link) {
-		// Attach the resolved link to the expression-object
-		expr.link = link;
-
+	// Find out about the root expression of this expr-tree
+	return web.promise(resolveExpr(expr)).then(function(link) {
 		// Now run this expr-tree
 		return execExprTree(expr);
 	}).then(function() {
@@ -73,6 +67,9 @@ function resolveExpr(expr) {
 		// Search
 		link = Context.find(expr.terms);
 	}
+
+	// Attach the resolved link to the expression-object
+	expr.link = link;
 	return link;
 }
 
@@ -82,7 +79,6 @@ function execExprTree(expr) {
 		if (expr.url) {
 			expr.link = { href: expr.url };
 		} else {
-			console.warn('(devnote) Interpretter program flow issue - this condition should have been handled in prior code');
 			throw "No matching endpoints found for this line.";
 		}
 	}
@@ -91,14 +87,16 @@ function execExprTree(expr) {
 	var isExecutable = web.queryLink(expr.link, { rel: 'searchlang.org/exe' });
 	if (isExecutable) {
 		// Resolve the full tree
+		var url;
 		return walkExprTree(expr, resolveExpr)
 			.then(function() {
 				// Send exec request
-				return web.postJson(buildExprUrl(expr), expr);
+				url = buildExprUrl(expr);
+				return web.postJson(url, expr);
 			})
 			.then(function(res) {
 				// Add response links to the context
-				Context.import(res.links);
+				Context.import(url, res.links);
 				return true;
 			});
 	} else {
@@ -108,6 +106,21 @@ function execExprTree(expr) {
 		}
 		return Context.import(expr.link.href);
 	}
+}
+
+// Utility to produce a final URL for the expression
+function buildExprUrl(expr) {
+	// Build a template context from the search attr/values
+	var ctx = {};
+	if (expr.terms) {
+		for (var i=0; i < expr.terms.length; i++) {
+			if (Array.isArray(expr.terms[i])) {
+				ctx[expr.terms[i][0]] = expr.terms[i][1];
+			}
+		}
+	}
+
+	return web.renderUri(expr.link.href, ctx);
 }
 
 // Utility to run a function on each node in a tree
