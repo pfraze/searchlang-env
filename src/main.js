@@ -1,4 +1,5 @@
 var Parser = require('./parser');
+var Executor = require('./executor');
 
 // Helpers
 // =======
@@ -38,6 +39,14 @@ $('.btn-execute').forEach(function($btn) {
 // =========
 // run full execution process
 function executeProgram(programText) {
-	var output = Parser.parse(programText);
-	$$('#playground').innerHTML = '<pre>'+JSON.stringify(output, false, 2)+'</pre>';
+	// Parse program
+	var programAST = Parser.parse(programText);
+	if (programAST.error) {
+		$$('#playground').innerHTML = '<pre class="parse-error">' + programAST.error + '</pre>';
+		return;
+	}
+
+	// Begin execution
+	$$('#playground').innerHTML = '';
+	Executor.exec(programAST).always(console.log.bind(console));
 }

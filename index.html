@@ -28,30 +28,37 @@ load
   /data-utils.js
 
 document
+  heading
+    user name
+    TITLE_CSS
   heading: "About me"
   paragraph
     user profile
+
   heading: "I enjoy..."
   list
     join
-      LIKES
+      user likes
+      user activities
 
-LIKES
-  user likes
-  user activities</textarea>
+TITLE_CSS
+  set style font-size: 2em
+  set style border-bottom: "1px solid black"
+</textarea>
       </div>
     </div>
     <div id="playground"></div>
     <div id="devnotes">
       <p>Todo</p>
       <ul>
-        <li>Global context
         <li>Parse<ul>
           <li>Comments
           <li>Search-expr subsearch
           <li>Search-expr navigations
         </ul>
-        <li>Expr-tree exec
+        <li>Expr-tree resolution<ul>
+          <li>Label-expr insertion
+        </ul>
         <li>Builtins<ul>
           <li>Document builtin
           <li>Load builtin
