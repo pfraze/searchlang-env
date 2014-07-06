@@ -34,6 +34,13 @@ $('.btn-execute').forEach(function($btn) {
 		executeProgram($$('.editor-textarea').value);
 	});
 });
+// ctrl+enter execute
+$$('.editor-textarea').addEventListener('keyup', function(e) {
+	if (e.keyCode == 13) {
+		e.preventDefault();
+		executeProgram($$('.editor-textarea').value);
+	}
+});
 
 // Execution
 // =========
