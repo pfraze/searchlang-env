@@ -1,11 +1,15 @@
 // Searchlang global context manager
 // =================================
-var Context = { cache: null, imports: null, importsMap: null };
+var Context = { cache: null, imports: null, importsMap: null, builtins: {} };
 module.exports = Context;
 
 // Imports management
 function getImport(url) {
 	return Context.imports[Context.importsMap[url]];
+}
+function addImport(url, links) {
+	var i = (Context.imports.push(links) - 1);
+	Context.importsMap[url] = i;
 }
 
 Context.reset = function() {
@@ -14,8 +18,10 @@ Context.reset = function() {
 	Context.imports = [];
 	Context.importsMap = {};
 
-	// Import builtins
-	// :TODO:
+	// Copy in builtins
+	for (var url in Context.builtins) {
+		addImport(url, Context.builtins[url]);
+	}
 };
 
 Context.fetch = function(url) {
@@ -35,22 +41,34 @@ Context.fetch = function(url) {
 		});
 };
 
-Context.import = function(url) {
+Context.import = function(url, links) {
 	if (Context.hasImported(url)) {
 		return web.promise(getImport(url));
+	}
+	if (links) {
+		// Add to cache and imports
+		Context.cache[url] = links;
+		addImport(url, links);
+		return links;
 	}
 	// Fetch the links
 	return Context.fetch(url).then(function() {
 		// Load from cache into active context
 		var links = Context.cache[url];
-		var i = (Context.imports.push(links) - 1);
-		Context.importsMap[url] = i;
+		addImport(url, links);
 		return links;
 	});
 };
 
 Context.hasImported = function(url) {
 	return (url in Context.importsMap);
+};
+
+Context.importBuiltin = function(url) {
+	return web.head(url).then(function(res) {
+		Context.builtins[url] = res.links;
+		return res;
+	});
 };
 
 Context.find = function(terms) {

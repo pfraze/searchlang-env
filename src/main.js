@@ -1,15 +1,18 @@
 var Parser = require('./parser');
 var Executor = require('./executor');
+var Context = require('./context');
+require('./builtins');
 
-// Helpers
-// =======
+// Env Setup
+// =========
+Context.importBuiltin('#debug');
+
+// GUI behaviors
+// =============
 var $$ = document.querySelector.bind(document);
 var $ = function(selector) {
 	return Array.prototype.slice.call(document.querySelectorAll(selector));
 };
-
-// GUI behaviors
-// =============
 // textarea, behave.js
 var editor = new Behave({
     textarea:  $$('.editor-textarea'),
