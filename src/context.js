@@ -87,8 +87,9 @@ function findIn(links, terms) {
 		var link = links[i];
 
 		// Stringify link for broad search
-		if (!link.__stringified)
-			link.__stringified = JSON.stringify(link).toLowerCase();
+		if (!link.__stringified) {
+			Object.defineProperty(link, '__stringified', { value: JSON.stringify(link).toLowerCase() });
+		}
 
 		if (doesLinkMatch(link, terms)) {
 			return link;

@@ -69,8 +69,10 @@ function resolveExpr(expr) {
 	}
 
 	// Attach the resolved link to the expression-object
-	expr.link = link;
-	return link;
+	return web.promise(link).then(function(link) {
+		expr.link = JSON.parse(JSON.stringify(link));
+		return expr.link;
+	});
 }
 
 function execExprTree(expr) {
@@ -89,10 +91,11 @@ function execExprTree(expr) {
 		// Resolve the full tree
 		var url;
 		return walkExprTree(expr, resolveExpr)
-			.then(function() {
+			.then(function(links) {
+				console.log(links);
 				// Send exec request
 				url = buildExprUrl(expr);
-				return web.postJson(url, expr);
+				return web.postJson(url, links);
 			})
 			.then(function(res) {
 				// Add response links to the context
@@ -126,10 +129,15 @@ function buildExprUrl(expr) {
 // Utility to run a function on each node in a tree
 // - any failed nodes fails the entire walk
 function walkExprTree(root, func) {
-	if (!root.children) return web.promise(true);
+	if (!root.children) return web.promise(false);
 	var promises = root.children.map(function(expr) {
-		return walkExprTree(expr).then(function() {
-			return func(expr);
+		return walkExprTree(expr, func).then(function(children) {
+			return web.promise(func(expr)).then(function(res) {
+				if (children) {
+					res.children = children;
+				}
+				return res;
+			});
 		});
 	});
 	return web.promise.all(promises);

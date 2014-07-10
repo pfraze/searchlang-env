@@ -59,7 +59,6 @@ function executeProgram(programText) {
 	// Begin execution
 	$$('#playground').innerHTML = '';
 	Executor.exec(programAST).always(function(out) {
-		console.log(out);
-		$$('#playground').innerHTML = '<pre>'+JSON.stringify(programAST, 0, 4)+'</pre>';
+		console.debug('Exec result:', out);
 	});
 }
