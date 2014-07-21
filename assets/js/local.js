@@ -36,7 +36,7 @@ util.mixin.call(module.exports, require('./promises.js'));
 util.mixin.call(module.exports, require('./request-event.js'));
 util.mixin.call(module.exports, require('./web/helpers.js'));
 util.mixin.call(module.exports, require('./web/links.js'));
-util.mixin.call(module.exports, require('./web/httpl.js'));
+util.mixin.call(module.exports, require('./web/server.js'));
 util.mixin.call(module.exports, require('./web/subscribe.js'));
 
 // Request sugars
@@ -47,7 +47,7 @@ function dispatch(headers) {
 	return req;
 }
 function searchDispatch(headers) {
-	return web.head('#localjs/links').dispatch(headers);
+	return web.head('local://links.local.js').dispatch(headers);
 }
 function makeRequestSugar(method) {
 	return function(url, params) {
@@ -117,7 +117,7 @@ if (global) {
 // Worker-only setup
 // =================
 require('./worker');
-},{"./config.js":1,"./constants.js":2,"./promises.js":4,"./request-event.js":5,"./util":8,"./web/bridge.js":9,"./web/content-types.js":10,"./web/helpers.js":11,"./web/http-headers.js":12,"./web/httpl.js":13,"./web/incoming-request.js":14,"./web/incoming-response.js":15,"./web/links.js":16,"./web/request.js":17,"./web/response.js":18,"./web/schemes.js":19,"./web/subscribe.js":20,"./web/uri-template.js":21,"./worker":22}],4:[function(require,module,exports){
+},{"./config.js":1,"./constants.js":2,"./promises.js":4,"./request-event.js":5,"./util":8,"./web/bridge.js":9,"./web/content-types.js":10,"./web/helpers.js":11,"./web/http-headers.js":12,"./web/incoming-request.js":13,"./web/incoming-response.js":14,"./web/links.js":15,"./web/request.js":16,"./web/response.js":17,"./web/schemes.js":18,"./web/server.js":19,"./web/subscribe.js":20,"./web/uri-template.js":21,"./worker":22}],4:[function(require,module,exports){
 var localConfig = require('./config.js');
 var util = require('./util');
 
@@ -1011,7 +1011,7 @@ if (typeof window == 'undefined' || window.ActiveXObject || !window.postMessage)
     var nextTickItem = 0; // tracked outside the handler in case one of them throws
 	var nextTickQueue = [];
 	nextTick = function(fn) {
-		if (!nextTickQueue.length) window.postMessage('nextTick', '*');
+		if (!nextTickQueue.length || nextTickItem > 0) window.postMessage('nextTick', '*');
 		nextTickQueue.push(fn);
 	};
 	window.addEventListener('message', function(evt){
@@ -1052,13 +1052,14 @@ var envIsWorker     = (typeof self.window == 'undefined');
 // ======
 // EXPORTED
 // wraps a reliable, ordered messaging channel to carry messages
-function Bridge(path, channel, targetOrigin) {
+function Bridge(address, channel, remoteRequestHandler, targetOrigin) {
 	if (envIframeExists && channel instanceof HTMLIFrameElement) {
 		channel = channel.contentWindow;
 	}
 
-	this.path = path;
+	this.address = address;
 	this.channel = channel;
+	this.remoteRequestHandler = remoteRequestHandler;
 	this.targetOrigin = targetOrigin || '*';
 	this.channelIsWorker = (envWorkerExists && this.channel instanceof Worker);
 
@@ -1133,7 +1134,7 @@ Bridge.prototype.terminate = function(status, reason) {
 };
 
 // Virtual request handler
-Bridge.prototype.onRequest = function(ireq, ores) {
+Bridge.prototype.handleLocalRequest = function(ireq, ores) {
 	var sid = this.sidCounter++;
 
 	// Hold onto streams
@@ -1144,7 +1145,7 @@ Bridge.prototype.onRequest = function(ireq, ores) {
 	var msg = {
 		sid: sid,
 		method: ireq.method,
-		path: '#' + ((ireq.pathd[1]) ? ireq.pathd[1].slice(1) : ''),
+		path: ireq.path,
 		params: ireq.params
 	};
 	for (var k in ireq) {
@@ -1210,16 +1211,7 @@ Bridge.prototype.onMessage = function(event) {
 		if (!msg.path) { return this.log('warn', 'Dropping HTTPL request with no path ' + JSON.stringify(msg)); }
 
 		// Get the handler
-		var httpl = require('./httpl.js');
-		var handler, pathd, routes = httpl.getRoutes();
-		for (var i=0; i < routes.length; i++) {
-			pathd = routes[i].path.exec(msg.path);
-			if (pathd) {
-				handler = routes[i].handler;
-				break;
-			}
-		}
-		msg.pathd = pathd;
+		var handler = this.remoteRequestHandler;
 		if (!handler) { handler = function(req, res) { res.status(404, 'Not Found').end(); }; }
 
 		// Create incoming request, incoming response and outgoing response
@@ -1265,15 +1257,6 @@ Bridge.prototype.onMessage = function(event) {
 			for (var k in msg) {
 				if (helpers.isHeaderKey(k)) {
 					stream.header(k, msg[k]);
-				}
-			}
-			// correct link header entries, if given, to be relative to bridge path
-			if (stream.headers.Link && Array.isArray(stream.headers.Link)) {
-				for (var i=0; i < stream.headers.Link.length; i++) {
-					if (typeof stream.headers.Link[i].href == 'string' && stream.headers.Link[i].href.charAt(0) == '#') {
-						var subpath = stream.headers.Link[i].href.slice(1);
-						stream.headers.Link[i].href = this.path + ((subpath.length) ? '/' + subpath : '');
-					}
 				}
 			}
 			stream.start();
@@ -1326,7 +1309,7 @@ function validateHttplMessage(parsedmsg) {
 		return false;
 	return true;
 }
-},{"./helpers.js":11,"./httpl.js":13,"./incoming-request.js":14,"./incoming-response.js":15,"./request.js":17,"./response.js":18}],10:[function(require,module,exports){
+},{"./helpers.js":11,"./incoming-request.js":13,"./incoming-response.js":14,"./request.js":16,"./response.js":17}],10:[function(require,module,exports){
 // contentTypes
 // ============
 // EXPORTED
@@ -1769,8 +1752,8 @@ function joinUri() {
 // EXPORTED
 // tests to see if a URL is absolute
 // - "absolute" means that the URL can reach something without additional context
-// - eg http://foo.com, //foo.com, #bar.app, foo.com/test.js#bar
-var hasSchemeRegex = /^((http(s|l)?:)?\/\/)|((nav:)?\|\|)|(data:)/;
+// - eg http://foo.com, //foo.com
+var hasSchemeRegex = /^([A-z]*:?\/\/)|((nav:)?\|\|)|(data:)/;
 function isAbsUri(url) {
 	// Has a scheme?
 	return hasSchemeRegex.test(url);
@@ -1805,10 +1788,6 @@ function joinRelPath(urld, relpath) {
 		// absolute path
 		return protocol + urld.authority + relpath;
 	}
-    if (relpath.charAt(0) == '#') {
-        // absolute hash-path
-		return protocol + urld.authority + urld.path + relpath;
-    }
 	// relative path, run as a set of instruction
 	var hostpath = urld.path;
 	var hostpathParts = hostpath.split('/');
@@ -2118,93 +2097,6 @@ httpHeaders.register('accept',
 	helpers.parseAcceptHeader
 );
 },{"./helpers.js":11}],13:[function(require,module,exports){
-var helpers = require('./helpers');
-var schemes = require('./schemes');
-var contentTypes = require('./content-types');
-var IncomingRequest = require('./incoming-request');
-var Response = require('./response');
-var Bridge = require('./bridge');
-
-// Local Routes Registry
-// =====================
-var _routes = [];
-
-// EXPORTED
-function at(path, handler, targetOrigin) {
-	// Bridge as needed
-	if (typeof handler != 'function' && !handler.bridge) {
-		var channel = handler;
-		channel.bridge = new Bridge(path, channel, targetOrigin);
-		path += '(/.*)?';
-		handler = channel.bridge;
-	}
-
-	// Add route
-	if (path.charAt(0) != '#') {
-		path = '#' + path;
-	}
-	path = new RegExp('^'+path+'$', 'i');
-	_routes.push({ path: path, handler: handler });
-}
-
-// EXPORTED
-function getRoutes() {
-	return _routes;
-}
-
-// Virtual request handler
-schemes.register('#', function (oreq, ires) {
-	// Parse the virtual path
-	var urld2 = helpers.parseUri('/' + (oreq.urld.anchor || ''));
-	if (urld2.query) {
-		// mix query params into request
-		var queryParams = contentTypes.deserialize('application/x-www-form-urlencoded', urld2.query);
-		oreq.param(queryParams);
-	}
-	oreq.headers.path = '#' + urld2.path.slice(1);
-
-	// Get the handler
-	var pathd, handler;
-	for (var i=0; i < _routes.length; i++) {
-		pathd = _routes[i].path.exec(oreq.headers.path);
-		if (pathd) {
-			oreq.headers.pathd = pathd; // update request headers to include the path match
-			handler = _routes[i].handler;
-		}
-	}
-
-	// Create incoming request / outgoing response
-	var ireq = new IncomingRequest(oreq.headers);
-	var ores = new Response();
-
-	// Wire up events
-	oreq.wireUp(ireq);
-	ores.wireUp(ires);
-	ireq.memoEventsTillNextTick();
-	ires.memoEventsTillNextTick();
-	oreq.on('close', function() { ores.close(); });
-
-	// Support warnings
-	if (oreq.isBinary) // :TODO: add support
-		console.warn('Got virtual request with binary=true - sorry, not currently supported', oreq);
-
-	// Pass on to the handler
-	if (handler) {
-		if (handler instanceof Bridge) {
-			handler.onRequest(ireq, ores, oreq.originChannel);
-		} else {
-			handler(ireq, ores, oreq.originChannel);
-		}
-	} else {
-		ores.status(404, 'Not Found').end();
-	}
-});
-
-module.exports = {
-	at: at,
-	getRoutes: getRoutes
-};
-},{"./bridge":9,"./content-types":10,"./helpers":11,"./incoming-request":14,"./response":18,"./schemes":19}],14:[function(require,module,exports){
 var util = require('../util');
 var helpers = require('./helpers.js');
 var httpHeaders = require('./http-headers.js');
@@ -2221,8 +2113,7 @@ function IncomingRequest(headers) {
 
 	// Set attributes
 	this.method = (headers.method) ? headers.method.toUpperCase() : 'GET';
-	this.path = headers.path || '#';
-	this.pathd = headers.pathd || [this.path];
+	this.path = headers.path || '/';
 	this.params = (headers.params) || {};
 	for (var k in headers) {
 		if (helpers.isHeaderKey(k)) { // starts uppercase?
@@ -2315,7 +2206,7 @@ IncomingRequest.prototype.pipe = function(target, headersCB, bodyCb) {
 	}
 	return target;
 };
-},{"../util":8,"./content-types.js":10,"./helpers.js":11,"./http-headers.js":12,"./links":16,"./request":17,"./response":18}],15:[function(require,module,exports){
+},{"../util":8,"./content-types.js":10,"./helpers.js":11,"./http-headers.js":12,"./links":15,"./request":16,"./response":17}],14:[function(require,module,exports){
 var util = require('../util');
 var helpers = require('./helpers.js');
 var httpHeaders = require('./http-headers.js');
@@ -2441,16 +2332,14 @@ IncomingResponse.prototype.pipe = function(target, headersCB, bodyCb) {
 	}
 	return target;
 };
-},{"../util":8,"./content-types.js":10,"./helpers.js":11,"./http-headers.js":12,"./links":16,"./request":17,"./response":18}],16:[function(require,module,exports){
+},{"../util":8,"./content-types.js":10,"./helpers.js":11,"./http-headers.js":12,"./links":15,"./request":16,"./response":17}],15:[function(require,module,exports){
 var promise = require('../promises').promise;
 var helpers = require('./helpers');
-var httpl = require('./httpl');
+var server = require('./server');
 
+var linksSources = {};
 var linksFetches = [];
-httpl.at('#localjs/links', function(req, res, origin) {
-	if (origin) {
-		return res.s403('Only accessible from the document').end();
-	}
+server.createServer(function(req, res) {
 	promise.bundle(linksFetches).always(function(linkss) {
 		// Flatten arrays
 		var links = [];
@@ -2458,9 +2347,9 @@ httpl.at('#localjs/links', function(req, res, origin) {
 		// Respond with links
 		res.s204('Ok, no content').link(links).end();
 	});
-});
+}).listen({ local: 'links.local.js' });
 
-module.exports.addLinks = function(source) {
+module.exports.appendIndex = function(source) {
 	if (typeof Document != 'undefined' && (source instanceof Document)) {
 		linksFetches.push(helpers.extractDocumentLinks(source, { links: true }));
 	} else if (typeof source == 'string') {
@@ -2470,7 +2359,17 @@ module.exports.addLinks = function(source) {
 	}
 };
 
-module.exports.clearLinks = function() {
+module.exports.prependIndex = function(source) {
+	if (typeof Document != 'undefined' && (source instanceof Document)) {
+		linksFetches.unshift(helpers.extractDocumentLinks(source, { links: true }));
+	} else if (typeof source == 'string') {
+		linksFetches.unshift(web.head(source).always(function(res) {
+			return res.links;
+		}));
+	}
+};
+
+module.exports.clearIndex = function() {
 	linksFetches.length = 0;
 };
 
@@ -2482,15 +2381,7 @@ module.exports.processLinks = function(links, baseUrl) {
 		.forEach(function(link) {
 			// Convert relative paths to absolute uris
 			if (link.href && !helpers.isAbsUri(link.href) && baseUrl) {
-				if (link.href.charAt(0) == '#') {
-					if (baseUrl.source) {
-						// strip any hash or query param
-						baseUrl = ((baseUrl.protocol) ? baseUrl.protocol + '://' : '') + baseUrl.authority + baseUrl.path;
-					}
-					link.href = helpers.joinUri(baseUrl, link.href);
-				} else {
-					link.href = helpers.joinRelPath(baseUrl, link.href);
-				}
+				link.href = helpers.joinRelPath(baseUrl, link.href);
 			}
 
 			// Add `is` helper
@@ -2514,7 +2405,7 @@ module.exports.processLinks = function(links, baseUrl) {
 	return links;
 };
 var noEnumDesc = { value: null, enumerable: false, configurable: true, writable: true };
-},{"../promises":4,"./helpers":11,"./httpl":13}],17:[function(require,module,exports){
+},{"../promises":4,"./helpers":11,"./server":19}],16:[function(require,module,exports){
 var localConfig = require('../config.js');
 var util = require('../util');
 var promises = require('../promises.js');
@@ -2529,7 +2420,7 @@ var IncomingResponse = require('./incoming-response.js');
 // =======
 // EXPORTED
 // Interface for sending requests
-function Request(headers, originChannel) {
+function Request(headers) {
 	util.EventEmitter.call(this);
 	promises.Promise.call(this);
 	if (!headers) headers = {};
@@ -2540,7 +2431,6 @@ function Request(headers, originChannel) {
 	this.headers = headers;
 	this.headers.method = (this.headers.method) ? this.headers.method.toUpperCase() : 'GET';
 	this.headers.params = (this.headers.params) || {};
-	this.originChannel = originChannel;
 	this.isBinary = false; // stream is binary?
 
 	// Behavior flags
@@ -2594,9 +2484,10 @@ Request.prototype.header = function(k, v) {
 
 // Link-header construction helper
 // - `href`: string, the target of the link
+// - `rel`: optional string, the reltype of the link
 // - `attrs`: optional object, the attributes of the link
 // - alternatively, can pass a full link object, or an array of link objects
-Request.prototype.link = function(href, attrs) {
+Request.prototype.link = function(href, rel, attrs) {
 	if (Array.isArray(href)) {
 		href.forEach(function(link) { this.link(link); }.bind(this));
 		return this;
@@ -2604,9 +2495,13 @@ Request.prototype.link = function(href, attrs) {
 	if (!this.headers.Link) { this.headers.Link = []; }
 	if (href && typeof href == 'object') {
 		attrs = href;
+	} else if (rel && typeof rel == 'object') {
+		attrs = rel;
+		attrs.href = href;
 	} else {
 		if (!attrs) attrs = {};
 		attrs.href = href;
+		attrs.rel = rel;
 	}
 	this.headers.Link.push(attrs);
 	return this;
@@ -2821,7 +2716,6 @@ Request.prototype.start = function() {
 
 	// Prep request
 	if (!this.headers || !this.headers.url) throw "No URL on request";
-	var isVirtual = (this.headers.url.indexOf('#') === 0);
     if (this.headers.url.charAt(0) == '/' && typeof window.location != 'undefined') {
 		var origin = window.location.protocol + '//' + window.location.hostname + ((window.location.port) ? (':' + window.location.port) : '');
 		this.headers.url = helpers.joinUri(origin, this.headers.url);
@@ -2831,7 +2725,7 @@ Request.prototype.start = function() {
 	// Setup response object
 	var requestStartTime = Date.now();
 	var ires = new IncomingResponse();
-	ires.on('headers', ires.processHeaders.bind(ires, (isVirtual) ? false : this.urld));
+	ires.on('headers', ires.processHeaders.bind(ires, this.urld));
 	ires.on('end', function() {
 		// Track latency
 		ires.latency = Date.now() - requestStartTime;
@@ -2850,14 +2744,13 @@ Request.prototype.start = function() {
 	ires.on('close', fulfill); // will have no effect if already called
 
 	// Execute by scheme
-	var scheme = (isVirtual) ? '#' : parseScheme(this.headers.url);
-	var schemeHandler = schemes.get(scheme);
+	var schemeHandler = schemes.get(this.urld.protocol || 'http');
 	if (schemeHandler) { schemeHandler(this, ires); }
 	else {
 		// invalid scheme
 		var ores = new Response();
 		ores.wireUp(ires);
-		ores.status(0, 'unsupported scheme "'+scheme+'"').end();
+		ores.status(0, 'unsupported scheme "'+this.urld.protocol+'"').end();
 	}
 
 	this.isStarted = true;
@@ -2938,13 +2831,7 @@ function fulfillResponsePromise(req, res) {
 	else
 		req.fulfill(res); // :TODO: 1xx protocol handling
 }
-
-// helper - extracts scheme from the url
-function parseScheme(url) {
-	var schemeMatch = /^([^.^:]*):/.exec(url);
-	return (schemeMatch) ? schemeMatch[1] : 'http';
-}
-},{"../config.js":1,"../promises.js":4,"../util":8,"./content-types.js":10,"./helpers.js":11,"./incoming-response.js":15,"./response.js":18,"./schemes.js":19,"./uri-template.js":21}],18:[function(require,module,exports){
+},{"../config.js":1,"../promises.js":4,"../util":8,"./content-types.js":10,"./helpers.js":11,"./incoming-response.js":14,"./response.js":17,"./schemes.js":18,"./uri-template.js":21}],17:[function(require,module,exports){
 var util = require('../util');
 var promise = require('../promises.js').promise;
 var helpers = require('./helpers.js');
@@ -3020,9 +2907,10 @@ Response.prototype.event = function(event, data) {
 
 // Link-header construction helper
 // - `href`: string, the target of the link
+// - `rel`: optional string, the reltype of the link
 // - `attrs`: optional object, the attributes of the link
 // - alternatively, can pass a full link object, or an array of link objects
-Response.prototype.link = function(href, attrs) {
+Response.prototype.link = function(href, rel, attrs) {
 	if (Array.isArray(href)) {
 		href.forEach(function(link) { this.link(link); }.bind(this));
 		return this;
@@ -3030,9 +2918,13 @@ Response.prototype.link = function(href, attrs) {
 	if (!this.headers.Link) { this.headers.Link = []; }
 	if (href && typeof href == 'object') {
 		attrs = href;
+	} else if (rel && typeof rel == 'object') {
+		attrs = rel;
+		attrs.href = href;
 	} else {
 		if (!attrs) attrs = {};
 		attrs.href = href;
+		attrs.rel = rel;
 	}
 	this.headers.Link.push(attrs);
 	return this;
@@ -3101,7 +2993,7 @@ Response.prototype.close = function() {
 	this.clearEvents();
 	return this;
 };
-},{"../promises.js":4,"../util":8,"./content-types.js":10,"./helpers.js":11}],19:[function(require,module,exports){
+},{"../promises.js":4,"../util":8,"./content-types.js":10,"./helpers.js":11}],18:[function(require,module,exports){
 var util = require('../util');
 var helpers = require('./helpers.js');
 var contentTypes = require('./content-types.js');
@@ -3335,7 +3227,138 @@ schemes.register('data', function(oreq, ires) {
 	ores.status(200, 'OK').contentType(contentType);
 	ores.end(data);
 });
-},{"../util":8,"./content-types.js":10,"./helpers.js":11,"./http-headers.js":12,"./response.js":18}],20:[function(require,module,exports){
+},{"../util":8,"./content-types.js":10,"./helpers.js":11,"./http-headers.js":12,"./response.js":17}],19:[function(require,module,exports){
+var helpers = require('./helpers');
+var schemes = require('./schemes');
+var contentTypes = require('./content-types');
+var IncomingRequest = require('./incoming-request');
+var Response = require('./response');
+var Bridge = require('./bridge');
+
+// Server
+// ======
+var _servers = {};
+function Server(handler, channel) {
+	this.handler = handler;
+	this.channel = channel;
+	this.bridge  = undefined;
+	this.address = undefined;
+	this.targetOrigin = undefined;
+}
+
+// EXPORTED
+// starts handling requests at the given address
+// - `opts.local`: string, the local address
+// - `opts.targetOrigin`: string, the target origin of the bridge (if applicable). Defaults to '*'
+// - currently only supports local addresses
+Server.prototype.listen = function(opts) {
+	opts = opts || {};
+	if (!opts.local) {
+		throw "Currently only local:// addresses are supported by listen() in localjs (eg local://my-domain)";
+	}
+	if (this.address) {
+		throw "Already listening - must close() before calling listen() again";
+	}
+	if (opts.local in _servers) {
+		throw "Address '"+opts.local+"' is already in use";
+	}
+
+	// Setup and add to registry
+	this.address = { local: opts.local };
+	if (this.channel) {
+		this.bridge = new Bridge(opts.local, this.channel, this.handler, opts.targetOrigin);
+	}
+	_servers[opts.local] = this;
+};
+
+// EXPORTED
+Server.prototype.close = function(status, reason) {
+	if (this.address) {
+		delete _servers[this.address.local];
+		this.address = null;
+		if (this.bridge) {
+			this.bridge.terminate(status, reason);
+			delete this.bridge;
+		}
+	}
+};
+
+// EXPORTED
+function createServer(channel, handler) {
+	// Deal with createServer(handler)
+	if (!handler && typeof channel == 'function') {
+		handler = channel;
+		channel = void 0;
+	}
+	return new Server(handler, channel);
+}
+
+// EXPORTED
+function getLocalServers() {
+	return _servers;
+}
+
+// EXPORTED
+function getLocalServer(address) {
+	return _servers[address];
+}
+
+// EXPORTED
+function allocName(base) {
+	if (!base) base = 'server';
+	for (var i=0; i < 10000; i++) {
+		var name = base + i;
+		if (!(name in _servers)) {
+			return name;
+		}
+	}
+}
+
+// Local-server request handler
+// ============================
+schemes.register('local', function (oreq, ires) {
+	if (oreq.urld.query) {
+		// Mix query params into request
+		var queryParams = contentTypes.deserialize('application/x-www-form-urlencoded', oreq.urld.query);
+		oreq.param(queryParams);
+	}
+
+	// Create incoming request / outgoing response
+	oreq.headers.path = oreq.urld.path;
+	var ireq = new IncomingRequest(oreq.headers);
+	var ores = new Response();
+
+	// Wire up events
+	oreq.wireUp(ireq);
+	ores.wireUp(ires);
+	ireq.memoEventsTillNextTick();
+	ires.memoEventsTillNextTick();
+	oreq.on('close', function() { ores.close(); });
+
+	// Support warnings
+	if (oreq.isBinary) // :TODO: add support
+		console.warn('Got virtual request with binary=true - sorry, not currently supported', oreq);
+
+	// Pass on to the server
+	var server = _servers[oreq.urld.authority];
+	if (server) {
+		if (server.bridge) {
+			server.bridge.handleLocalRequest(ireq, ores);
+		} else {
+			server.handler(ireq, ores);
+		}
+	} else {
+		ores.status(404, 'Not Found').end();
+	}
+});
+
+module.exports = {
+	createServer: createServer,
+	getLocalServers: getLocalServers,
+	getLocalServer: getLocalServer,
+	allocName: allocName
+};
+},{"./bridge":9,"./content-types":10,"./helpers":11,"./incoming-request":13,"./response":17,"./schemes":18}],20:[function(require,module,exports){
 // Events
 // ======
 var util = require('../util');
@@ -3539,7 +3562,7 @@ module.exports = {
 	EventStream: EventStream,
 	EventHost: EventHost
 };
-},{"../util":8,"./content-types.js":10,"./request.js":17,"./response.js":18}],21:[function(require,module,exports){
+},{"../util":8,"./content-types.js":10,"./request.js":16,"./response.js":17}],21:[function(require,module,exports){
 /*
  UriTemplate Copyright (c) 2012-2013 Franz Antesberger. All Rights Reserved.
  Available via the MIT license.
