@@ -130,7 +130,6 @@ Parser.readExpression = function() {
 		Parser.moveBuffer(match[0].length);
 	} else {
 		expr_obj = { terms: Parser.readSearchSubexpr() };
-		// dont need to move buffer, ^ will do so
 	}
 
 	// :TODO: subnavigations

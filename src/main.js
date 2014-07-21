@@ -5,7 +5,8 @@ require('./builtins');
 
 // Env Setup
 // =========
-Context.importBuiltin('#debug');
+Context.importBuiltin('local://document');
+Context.importBuiltin('local://debug');
 
 // GUI behaviors
 // =============
@@ -39,7 +40,7 @@ $('.btn-execute').forEach(function($btn) {
 });
 // ctrl+enter execute
 $$('.editor-textarea').addEventListener('keyup', function(e) {
-	if (e.keyCode == 13) {
+	if (e.keyCode == 13 && e.ctrlKey) {
 		e.preventDefault();
 		executeProgram($$('.editor-textarea').value);
 	}

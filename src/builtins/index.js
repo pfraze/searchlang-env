@@ -1,1 +1,2 @@
 require('./debugging');
+require('./document');
