@@ -7,13 +7,9 @@ module.exports = Executor;
 
 // Run a parsed program
 Executor.exec = function(expr) {
-	// Reset the global context
-	Context.reset(); // should only have builtins at start
-	// :TODO: ^ no longer correct
-
-	// Find out about the root expression of this expr-tree
+	// Resolve from search -> link
 	return web.promise(resolveExpr(expr)).then(function(link) {
-		// Now run this expr-tree
+		// Execute link
 		return execExpr(expr);
 	});
 }
@@ -30,7 +26,6 @@ function resolveExpr(expr) {
 		if (!link) {
 			link = Context.fetch(expr.url);
 		}
-	// } else if (expr.label) { <-- no resolve step for label-blocks at the toplevel
 	} else if (expr.terms) {
 		// Search
 		link = Context.find(expr.terms);
@@ -67,10 +62,10 @@ function execExpr(expr) {
 		});
 	} else {
 		// Just import its links, if we havent already
-		if (Context.hasImported(expr.link.href)) {
+		if (Context.hasImported(url)) {
 			return true;
 		}
-		return Context.import(expr.link.href);
+		return Context.import(url);
 	}
 }
 

@@ -5,8 +5,10 @@ require('./builtins');
 
 // Env Setup
 // =========
-Context.importBuiltin('local://document');
-Context.importBuiltin('local://debug');
+web.promise.bundle([
+	Context.importBuiltin('local://document'),
+	Context.importBuiltin('local://debug')
+]).then(Context.reset.bind(Context));
 
 // GUI behaviors
 // =============

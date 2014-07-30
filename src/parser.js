@@ -3,10 +3,9 @@
 /*
 Grammar
 line           := expr | comment
-expr           := ( label-expr | url-expr | search-exp )
-label-expr     := /[A-Z_][A-Z_0-9]* /
+expr           := ( url-expr | search-exp )
 url-expr       := /[^\s]+.[^\s]+/
-search-expr    := search-subexpr | ( ( label-expr | url-expr | search-subexpr ) ( '>' search-subexpr )+ )
+search-expr    := search-subexpr | ( ( url-expr | search-subexpr ) ( '>' search-subexpr )+ )
 search-subexpr := term* ( attribute: values )*
 attribute      := term
 values         := term | string | '(' search-expr+ ')'
@@ -23,18 +22,15 @@ var Parser = { buffer: null, trash: null, buffer_position: 0, buffer_size: 0, lo
 module.exports = Parser;
 
 // Main API
-// - Generates an array of { terms:, label:, url:, subnav:, children: } expression objects
+// - Generates a { terms:, url:, subnav: } expression object
 //  - `terms`: array, a search-subexpr, consists of...
 //    - string: a search term
 //    - [string, string]: an attribute/value
 //    - [string, object]: an attribute/subsearch
-//  - `label`: string, a label-expr
 //  - `url`: string, a url-expr
 //  - `subnav`: object of { terms:, subnav: }, a sub navigation
-//  - `children`: array of child { terms:, label:, url:, subnav:, children: } expression objects
 //  - type of the expression object depends on structure:
 //    - `terms` present, search-expr
-//    - `label` present, label-expr
 //    - `url` present, url-expr
 Parser.parse = function(buffer) {
 	Parser.buffer = buffer;
@@ -61,10 +57,9 @@ Parser.isFinished = function() {
 };
 
 var exprRegex = /^[ ]*(.*)(\n|$)/;
-var labelRegex = /^[A-Z_][A-Z_0-9]*/;
 var urlRegex = /^[^\s]+\.[^\s]+/;
 Parser.readExpression = function() {
-	// expr := ( label-expr | url-expr | search-exp )
+	// expr := ( url-expr | search-exp )
 	// ==============================================
 
 	// Read to newline
@@ -74,10 +69,7 @@ Parser.readExpression = function() {
 
 	// Categorize
 	var expr_obj;
-	if (labelRegex.test(expr)) {
-		expr_obj = { label: expr };
-		Parser.moveBuffer(match[0].length);
-	} else if (urlRegex.test(expr)) {
+	if (urlRegex.test(expr)) {
 		expr_obj = { url: expr };
 		Parser.moveBuffer(match[0].length);
 	} else {
