@@ -14,18 +14,6 @@ var $$ = document.querySelector.bind(document);
 var $ = function(selector) {
 	return Array.prototype.slice.call(document.querySelectorAll(selector));
 };
-// textarea, behave.js
-var editor = new Behave({
-    textarea:  $$('.editor-textarea'),
-    replaceTab: true,
-    softTabs: true,
-    tabSize: 2,
-    autoOpen: false,
-    overwrite: false,
-    autoStrip: false,
-    autoIndent: false,
-    fence: false
-});
 // open/close toggle button
 $('.btn-toggle-editor').forEach(function($btn) {
 	$btn.addEventListener('click', function() {
@@ -38,20 +26,24 @@ $('.btn-execute').forEach(function($btn) {
 		executeProgram($$('.editor-textarea').value);
 	});
 });
-// ctrl+enter execute
-$$('.editor-textarea').addEventListener('keyup', function(e) {
-	if (e.keyCode == 13 && e.ctrlKey) {
+// enter execute
+$$('.editor-program').addEventListener('keyup', function(e) {
+	if (e.target.parentNode == $$('.editor-program') && e.target.tagName == 'INPUT' && e.keyCode == 13) {
 		e.preventDefault();
-		executeProgram($$('.editor-textarea').value);
+		executeLine(e.target.value);
 	}
 });
+
+// GUI setup
+// =========
+$$('.editor-program').innerHTML = '<input type="search" />';
 
 // Execution
 // =========
 // run full execution process
-function executeProgram(programText) {
+function executeLine(lineText) {
 	// Parse program
-	var programAST = Parser.parse(programText);
+	var programAST = Parser.parse(lineText);
 	if (programAST.error) {
 		$$('#playground').innerHTML = '<pre class="parse-error">' + programAST.error + '</pre>';
 		return;

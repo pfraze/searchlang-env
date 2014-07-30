@@ -20,9 +20,8 @@ body {
 .editor-controls {
 	text-align: right;
 }
-.editor-textarea {
-	width: 98%;
-	height: 90%;
+.editor-program input {
+	width: 100%;
 }
 
 /* playground */

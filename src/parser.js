@@ -3,8 +3,7 @@
 /*
 Grammar
 line           := expr | comment
-expr           := indentation ( label-expr | url-expr | search-exp ) '\n'
-indentation    := /\s* /
+expr           := ( label-expr | url-expr | search-exp )
 label-expr     := /[A-Z_][A-Z_0-9]* /
 url-expr       := /[^\s]+.[^\s]+/
 search-expr    := search-subexpr | ( ( label-expr | url-expr | search-subexpr ) ( '>' search-subexpr )+ )
@@ -44,13 +43,8 @@ Parser.parse = function(buffer) {
 	Parser.buffer_size = buffer.length;
 	Parser.log = ((Parser.logging) ? (function() { console.log.apply(console,arguments); }) : (function() {}));
 
-	var expr_tree = { children: [] };
-	try { Parser.readExpressionTree(expr_tree, 0); }
-	catch (e) {
-		return { error: e };
-	}
-
-	return expr_tree;
+	try { return Parser.readExpression(); }
+	catch (e) { return { error: e }; }
 };
 
 Parser.moveBuffer = function(dist) {
@@ -66,54 +60,12 @@ Parser.isFinished = function() {
 	return false;
 };
 
-Parser.readExpressionTree = function(parent, expected_indent) {
-	while (true) {
-		var indent = Parser.measureIndent();
-
-		// Empty line?
-		if (indent === false) {
-			if (Parser.isFinished())
-				break;
-			// Skip to next line
-			Parser.moveBuffer(Parser.buffer.indexOf('\n') + 1);
-			continue;
-		}
-		// End of this expression level?
-		else if (indent < expected_indent) {
-			break;
-		}
-		// Part of this expression level?
-		else if (indent == expected_indent) {
-			var expr = Parser.readExpression();
-			if (expr)
-				parent.children.push(expr);
-		}
-		// Part of a new child expression level?
-		else {
-			var new_parent = parent.children[parent.children.length - 1];
-			if (!new_parent) {
-				throw Parser.errorMsg('Bad indentation (the first line can not be indented)');
-			}
-			if (!new_parent.children) {
-				new_parent.children = [];
-			}
-			Parser.readExpressionTree(new_parent, indent);
-		}
-	}
-};
-
-var indentRegex = /^([ ]*)\S/;
-Parser.measureIndent = function() {
-	var match = indentRegex.exec(Parser.buffer);
-	return (match) ? match[1].length : false;
-};
-
 var exprRegex = /^[ ]*(.*)(\n|$)/;
 var labelRegex = /^[A-Z_][A-Z_0-9]*/;
 var urlRegex = /^[^\s]+\.[^\s]+/;
 Parser.readExpression = function() {
-	// expr := indentation ( label-expr | url-expr | search-exp ) '\n'
-	// ===============================================================
+	// expr := ( label-expr | url-expr | search-exp )
+	// ==============================================
 
 	// Read to newline
 	var match = exprRegex.exec(Parser.buffer);

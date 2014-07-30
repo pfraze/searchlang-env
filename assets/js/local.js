@@ -1,7 +1,8 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 module.exports = {
 	logTraffic: true,
-	logAllExceptions: false
+	logAllExceptions: false,
+	reltypeAliases: {}
 };
 },{}],2:[function(require,module,exports){
 module.exports = {
@@ -1528,6 +1529,7 @@ function splitEventstreamKV(kv) {
 // Helpers
 // =======
 
+var localConfig = require('../config.js');
 var promise = require('../promises.js').promise;
 var contentTypes = require('./content-types.js');
 var UriTemplate = require('./uri-template.js');
@@ -1554,6 +1556,32 @@ function extractDocumentLinks(doc, opts) {
 }
 
 // EXPORTED
+// adds the given reltype aliases to the config
+// - `aliases`: object, a map of shorthand to full domain
+// - eg `web.use({ foo: 'myfoobar.com' })` enables you to do 'foo:bar' to generate 'myfoobar.com/bar' in reltypes
+function use(aliases) {
+	for (var k in aliases) {
+		var domain = aliases[k];
+		if (domain.charAt(domain.length - 1) != '/') {
+			domain += '/';
+		}
+		localConfig.reltypeAliases[domain] = RegExp(k+':', 'g');
+	}
+}
+
+// EXPORTED
+// expands all aliases in the given rel string
+// - `rel`: string
+// - returns string
+function expandRelString(rel) {
+	if (typeof rel != 'string') return rel;
+	for (var domain in localConfig.reltypeAliases) {
+		rel = rel.replace(localConfig.reltypeAliases[domain], domain);
+	}
+	return rel;
+}
+
+// EXPORTED
 // takes parsed a link header and a query object, produces an array of matching links
 // - `links`: [object]/object/Document, either the parsed array of links, the request/response object, or a Document
 // - `query`: object/string
@@ -1564,6 +1592,10 @@ function queryLinks(links, query) {
 	if (links.parsedHeaders) links = links.parsedHeaders.link; // actually a request or response object
 	if (typeof query == 'string') { query = { rel: query }; } // if just a string, test against reltype
 	if (!Array.isArray(links)) return [];
+	if (!query.__hasExpandedRelString) {
+		Object.defineProperty(query, '__hasExpandedRelString', { value: true });
+		query.rel = expandRelString(query.rel);
+	}
 	return links.filter(function(link) { return queryLink(link, query); });
 }
 
@@ -1585,6 +1617,10 @@ var uriTokenStart = '\\{([^\\}]*)[\\+\\#\\.\\/\\;\\?\\&]?';
 var uriTokenEnd = '(\\,|\\})';
 function queryLink(link, query) {
 	if (typeof query == 'string') { query = { rel: query }; } // if just a string, test against reltype
+	if (!query.__hasExpandedRelString) {
+		Object.defineProperty(query, '__hasExpandedRelString', { value: true });
+		query.rel = expandRelString(query.rel);
+	}
 	for (var attr in query) {
 		if (typeof query[attr] == 'function') {
 			if (!query[attr].call(null, link[attr], attr)) {
@@ -1938,6 +1974,8 @@ function escape(str) {
 
 module.exports = {
 	extractDocumentLinks: extractDocumentLinks,
+	use: use,
+	expandRelString: expandRelString,
 	queryLinks: queryLinks,
 	queryLink: queryLink,
 
@@ -1962,7 +2000,7 @@ module.exports = {
 
 	escape: escape
 };
-},{"../promises.js":4,"./content-types.js":10,"./uri-template.js":21}],12:[function(require,module,exports){
+},{"../config.js":1,"../promises.js":4,"./content-types.js":10,"./uri-template.js":21}],12:[function(require,module,exports){
 var helpers = require('./helpers.js');
 
 // headers
@@ -2503,6 +2541,9 @@ Request.prototype.link = function(href, rel, attrs) {
 		attrs.href = href;
 		attrs.rel = rel;
 	}
+	if (attrs.rel) {
+		attrs.rel = helpers.expandRelString(attrs.rel);
+	}
 	this.headers.Link.push(attrs);
 	return this;
 };
@@ -2926,6 +2967,9 @@ Response.prototype.link = function(href, rel, attrs) {
 		attrs.href = href;
 		attrs.rel = rel;
 	}
+	if (attrs.rel) {
+		attrs.rel = helpers.expandRelString(attrs.rel);
+	}
 	this.headers.Link.push(attrs);
 	return this;
 };
@@ -3241,6 +3285,7 @@ var _servers = {};
 function Server(handler, channel) {
 	this.handler = handler;
 	this.channel = channel;
+	this.routes  = undefined;
 	this.bridge  = undefined;
 	this.address = undefined;
 	this.targetOrigin = undefined;
@@ -3282,6 +3327,97 @@ Server.prototype.close = function(status, reason) {
 		}
 	}
 };
+
+// EXPORTED
+Server.prototype.on = function(method, path, handler) {
+	if (this.handler && !this.routes) {
+		throw "Can not use routing functions and provide a handler function to createServer()";
+	}
+	if (!this.routes) {
+		this.routes = [];
+		this.handler = routesHandler;
+	}
+
+	// Extract the tokens in their positions within the regex match (less 1, because we drop the first value in the match array)
+	var pathTokens = {};
+	var i=0, match, re = /(:([^\/]*))|\(.+\)/g;
+	// note, we match both /:tokens and /(regex_groups), but we're only going to note the positions of the /:tokens
+	// this is because both produce items in an exec() response array, and we need to have the correct positioning for the /:tokens
+	while ((match = re.exec(path))) {
+		if (match[0].charAt(0) == ':') { // token or just a regex group?
+			pathTokens[i] = match[2]; // map the position to the token name
+		}
+		i++;
+	}
+
+	// Replace tokens with standard path part groups
+	path = path.replace(/(:[^\/]*)/g, '([^/]*)');
+
+	// Store
+	var regex = new RegExp('^'+path+'$', 'i');
+	this.routes.push({ method: method.toUpperCase(), path: path, regex: regex, pathTokens: pathTokens, handler: handler });
+};
+
+// Route sugars
+// EXPORTED
+Server.prototype.all = function(path, handler) {
+	this.on('*', path, handler);
+};
+['HEAD', 'GET', 'POST', 'PUT', 'DELETE', 'SUBSCRIBE', 'NOTIFY'].forEach(function(method) {
+	Server.prototype[method.toLowerCase()] = function(path, handler) {
+		this.on(method, path, handler);
+	};
+});
+
+// INTERNAL
+// handler used to handle Server routes
+function routesHandler(req, res) {
+	// Match route
+	var routeMatched = false, allowMethods = {}, route, match;
+	for (var i=0; i < this.routes.length; i++) {
+		var r = this.routes[i];
+		match = r.regex.exec(req.path);
+		if (!match) {
+			continue;
+		}
+		routeMatched = true;
+
+		// It would be faster to check method first, but checking method second lets us distinguish between 405 and 404
+		if (r.method != '*' && r.method != req.method) {
+			allowMethods[r.method] = 1;
+			continue;
+		}
+
+		route = r;
+		break;
+	}
+
+	// Handle nomatch
+	if (!route) {
+		if (routeMatched) {
+			res.s405('Bad method');
+			allowMethods = Object.keys(allowMethods).join(', ');
+			if (allowMethods) res.allow(allowMethods);
+			res.end();
+		} else {
+			res.s404('Not found').end();
+		}
+		return;
+	}
+
+	// Add path matches to params
+	for (var i=1; i < match.length; i++) {
+		req.params[i-1] = match[i];
+	}
+
+	// Add tokens to params
+	for (var k in r.pathTokens) {
+		req.params[r.pathTokens[k]] = req.params[k];
+	}
+
+	// Run handler
+	route.handler(req, res);
+}
 
 // EXPORTED
 function createServer(channel, handler) {
