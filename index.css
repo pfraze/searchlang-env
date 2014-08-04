@@ -20,7 +20,10 @@ body {
 .editor-controls {
 	text-align: right;
 }
-.editor-program input {
+
+/* slang-search */
+slang-search > input {
+	display: inline-block;
 	width: 100%;
 }
 

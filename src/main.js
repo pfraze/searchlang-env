@@ -38,7 +38,8 @@ $$('.editor-program').addEventListener('keyup', function(e) {
 
 // GUI setup
 // =========
-$$('.editor-program').innerHTML = '<input type="search" />';
+require('./custom-elements').registerAll();
+$$('.editor-program').innerHTML = '<slang-search></slang-search>';
 
 // Execution
 // =========
