@@ -27,26 +27,31 @@ slang-search > input {
 	width: 100%;
 }
 
+/* slang-form */
+slang-form {
+	display: block;
+	margin: 1px 0;
+	border: 3px ridge #ccc;
+}
+slang-form > .slang-form-title {
+	background: #ccc;
+	color: #444;
+	font-size: 75%;
+	padding: 0 3px;
+}
+slang-form > .slang-form-body {
+	padding: 1em;
+}
+slang-form > .slang-form-ctrls {
+	text-align: right;
+}
+
 /* playground */
 #playground {
 	padding: 1em;
 
 	/* stateful */
 	margin-left: 50px;
-}
-
-/* devnotes */
-#devnotes {
-	position: absolute;
-	top: 5px; right: 5px;
-	z-index: 1;
-	width: 10%; min-width: 200px;
-	height: 90%;
-	padding: 0 1em;
-	background: #eee;
-}
-#devnotes ul {
-	padding-left: 20px;
 }
 
 /* editor open mode */

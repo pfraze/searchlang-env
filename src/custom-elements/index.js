@@ -1,6 +1,6 @@
 module.exports = {
 	registerAll: function() {
-		require('./slang-phrase').register();
+		require('./slang-form').register();
 		require('./slang-search').register();
 	}
 };

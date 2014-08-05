@@ -28,18 +28,13 @@ $('.btn-execute').forEach(function($btn) {
 		executeProgram($$('.editor-textarea').value);
 	});
 });
-// enter execute
-$$('.editor-program').addEventListener('keyup', function(e) {
-	if (e.target.parentNode == $$('.editor-program') && e.target.tagName == 'INPUT' && e.keyCode == 13) {
-		e.preventDefault();
-		executeLine(e.target.value);
-	}
-});
 
 // GUI setup
 // =========
 require('./custom-elements').registerAll();
-$$('.editor-program').innerHTML = '<slang-search></slang-search>';
+$$('.editor-program').innerHTML = '<slang-search>test</slang-search><hr>' +
+	'<slang-search><slang-form title="Form 1" query="foo">my foo prase<slang-search multiline><slang-form title="Form 1" query="foo">my foo prase</slang-form></slang-search></slang-form><slang-form title="Form 2" query="bar">my bar form</slang-form><hr>'+
+	'<slang-form title="Multline" query=multi><slang-search multiline><slang-form>foo</slang-form><slang-form>bar</slang-form></slang-search></slang-form>';
 
 // Execution
 // =========
