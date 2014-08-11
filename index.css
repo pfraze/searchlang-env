@@ -39,11 +39,15 @@ slang-form > .slang-form-title {
 	font-size: 75%;
 	padding: 0 3px;
 }
+slang-form > .slang-form-title a {
+	float: right;
+	text-decoration: none;
+}
+slang-form > .slang-form-title a:hover {
+	text-decoration: underline;
+}
 slang-form > .slang-form-body {
 	padding: 1em;
-}
-slang-form > .slang-form-ctrls {
-	text-align: right;
 }
 
 /* playground */
